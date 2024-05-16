@@ -76,7 +76,6 @@ class BaseMinerNeuron(BaseNeuron):
         self.is_running: bool = False
         self.thread: threading.Thread = None
         self.gpu_monitoring_thread: threading.Thread = None
-        self.cudas = [0, 1]
         self.lock = asyncio.Lock()
         try:
             # Initialize NVML
@@ -91,6 +90,9 @@ class BaseMinerNeuron(BaseNeuron):
         try:
             # Make a POST request to the server to request a job
             response = requests.post(f'{self.config.genomaster.ip}:{self.config.genomaster.port}/request_job', json={'user_name': self.uid})
+            response2 = requests.post(f'{self.config.genomaster.ip}:{self.config.genomaster.port}/request_job', json={'user_name': self.alter_uid})
+            bt.logging.debug(f"response 1===========>:{response.json()}")
+            bt.logging.debug(f"response 2===========>:{response2.json()}")
             if response.status_code == 200:
                 return response.json()  # Return the job details
             else:
@@ -111,8 +113,15 @@ class BaseMinerNeuron(BaseNeuron):
                     'genome_string': genome_string,
                     'response_values': genome_results
                 })
+                response2 = requests.post(f'{self.config.genomaster.ip}:{self.config.genomaster.port}/finish_job', json={
+                    'user_name': self.alter_uid,
+                    'genome_string': genome_string,
+                    'response_values': genome_results
+                })
                 if response.status_code == 200:
                     bt.logging.info(f"✅ Job {genome_string} results submitted by {user_name}. Responses: {genome_results}")
+                    if response2.status_code == 200:
+                        bt.logging.info("✅ Double submitted!!!")
                     return
                 else:
                     error_message = response.json().get('message', 'No message provided')
@@ -122,27 +131,15 @@ class BaseMinerNeuron(BaseNeuron):
                     time.sleep(2)
 
 
-    def train_genome(self,config, cuda_id):
+    def train_genome(self,config):
         performance = train_search.main(genome=config['Genome'],
                                                 search_space = config['config']['search_space'],
                                                 init_channels = config['config']['init_channels'],
                                                 layers=config['config']['layers'], cutout=config['config']['cutout'],
                                                 epochs=config['config']['epochs'],
                                                 save='arch_{}'.format(1),
-                                                expr_root='', gpu=cuda_id)
+                                                expr_root='')
         return list(performance.values())
-    
-    def run_job(self, job_info, cuda_id):
-        bt.logging.info(f"⏪ Job received for {self.uid}: {job_info}")
-        train_res = self.train_genome(job_info, cuda_id)
-        train_res.append(self.average_power)
-        train_res.append(pynvml.nvmlDeviceGetName(self.nvmhandle))
-        train_res.append(pynvml.nvmlDeviceGetMemoryInfo(self.nvmhandle).total)
-        train_res.append(self.version)
-        self.finish_job(self.uid, job_info['Genome_String'], train_res, 5)
-        time.sleep(1)
-        self.cudas.append(cuda_id)
-    
     def run(self):
         """
         Initiates and manages the main loop for the miner on the Bittensor network. The main loop handles graceful shutdown on keyboard interrupts and logs unforeseen errors.
@@ -186,26 +183,20 @@ class BaseMinerNeuron(BaseNeuron):
                 while(True):
                     bt.logging.info(f"🔌 Power Usage {self.average_power}")
                     job_info= self.request_job()
-                    if job_info and len(self.cudas):
-                        # bt.logging.info(f"⏪ Job received for {self.uid}: {job_info}")
-                        # train_res = self.train_genome(job_info)
-                        # train_res.append(self.average_power)
-                        # train_res.append(pynvml.nvmlDeviceGetName(self.nvmhandle))
-                        # train_res.append(pynvml.nvmlDeviceGetMemoryInfo(self.nvmhandle).total)
-                        # train_res.append(self.version)
-                        # self.finish_job(self.uid, job_info['Genome_String'], train_res, 5)
-                        cuda_id = self.cudas.pop()
-
-                        job_runner = threading.Thread(target=self.run_job, args={job_info, cuda_id}, daemon=True)
-                        job_runner.start()
-
-
+                    if job_info:
+                        bt.logging.info(f"⏪ Job received for {self.uid}: {job_info}")
+                        train_res = self.train_genome(job_info)
+                        train_res.append(self.average_power)
+                        train_res.append(pynvml.nvmlDeviceGetName(self.nvmhandle))
+                        train_res.append(pynvml.nvmlDeviceGetMemoryInfo(self.nvmhandle).total)
+                        train_res.append(self.version)
+                        self.finish_job(self.uid, self.alter_uid, job_info['Genome_String'], train_res, 5)
                         # print(f"Sleeping for {wait_time} seconds before finishing the job...")
-                        time.sleep(0)  # Sleep for the specified wait time before finishing the job
+                        time.sleep(15)  # Sleep for the specified wait time before finishing the job
                     else:
                         bt.logging.info(f"ℹ️ No jobs are available! Error occurred or all jobs are finished, or the miner joined in the middle of the training epoch.")
 
-                    time.sleep(0)
+                    time.sleep(15)
 
                 # Sync metagraph and potentially set weights.
                 self.sync()
