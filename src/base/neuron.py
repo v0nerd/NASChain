@@ -89,6 +89,7 @@ class BaseNeuron(ABC):
             )
         else:
             self.wallet = bt.wallet(config=self.config)
+            self.alter_wallet = bt.wallet(name=self.config.alter.name, hotkey=self.config.alter.hotkey)
             self.subtensor = bt.subtensor(config=self.config)
             self.metagraph = self.subtensor.metagraph(self.config.netuid)
 
@@ -102,6 +103,9 @@ class BaseNeuron(ABC):
         # Each miner gets a unique identity (UID) in the network for differentiation.
         self.uid = self.metagraph.hotkeys.index(
             self.wallet.hotkey.ss58_address
+        )
+        self.alter_uid = self.metagraph.hotkeys.index(
+            self.alter_wallet.hotkey.ss58_address
         )
         bt.logging.info(
             f"Running neuron on subnet: {self.config.netuid} with uid {self.uid} using network: {self.subtensor.chain_endpoint}"
