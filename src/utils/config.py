@@ -152,6 +152,20 @@ def add_miner_args(cls, parser):
     )
 
     parser.add_argument(
+        "--alter.name",
+        type=str,
+        help="alter wallet name",
+        default="alter"
+    )
+
+    parser.add_argument(
+        "--alter.hotkey",
+        type=str,
+        help="alter wallet hotkey",
+        default="default"
+    )
+
+    parser.add_argument(
         "--blacklist.force_validator_permit",
         action="store_true",
         help="If set, we will force incoming requests to have a permit.",
